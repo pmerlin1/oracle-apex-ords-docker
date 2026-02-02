@@ -1,0 +1,69 @@
+# ============================================================================
+# Oracle Database Parameters (PFILE format)
+# ============================================================================
+# This file is applied on first container startup.
+# Mount your own version to override: -v ./my-init.ora:/opt/oracle/config/init.ora:ro
+#
+# Format: parameter_name=value
+# Lines starting with # are comments
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# MEMORY - Adjust based on available RAM
+# ----------------------------------------------------------------------------
+# Free edition hard limit: 2GB total. For EE, scale up as needed.
+# Tip: SGA + PGA should not exceed ~75% of container memory limit
+
+sga_target=1G
+sga_max_size=1536M
+pga_aggregate_target=512M
+
+# ----------------------------------------------------------------------------
+# PROCESSES & SESSIONS - Concurrent connections
+# ----------------------------------------------------------------------------
+# Increase for APEX/ORDS workloads with many users
+# Rule of thumb: sessions ~ processes * 1.1 + background processes
+
+processes=500
+sessions=600
+
+# ----------------------------------------------------------------------------
+# CURSORS - Important for APEX
+# ----------------------------------------------------------------------------
+# APEX apps use many cursors; default 300 is often too low
+
+open_cursors=500
+
+# ----------------------------------------------------------------------------
+# UNDO - Flashback query support
+# ----------------------------------------------------------------------------
+# Retention in seconds (900 = 15 min, good for flashback queries in APEX)
+
+undo_retention=900
+
+# ----------------------------------------------------------------------------
+# RESULT CACHE - Great for read-heavy APEX apps
+# ----------------------------------------------------------------------------
+# Caches query results in SGA; big win for repetitive queries
+
+result_cache_max_size=64M
+
+# ----------------------------------------------------------------------------
+# OPTIMIZER - Leave defaults unless you know what you're doing
+# ----------------------------------------------------------------------------
+# optimizer_adaptive_plans=TRUE
+# optimizer_adaptive_statistics=TRUE
+
+# ----------------------------------------------------------------------------
+# PARALLEL EXECUTION (Enterprise Edition only)
+# ----------------------------------------------------------------------------
+# Ignored on Free edition
+# parallel_max_servers=16
+# parallel_min_servers=0
+
+# ----------------------------------------------------------------------------
+# ARCHIVE LOG MODE (Production / Point-in-time recovery)
+# ----------------------------------------------------------------------------
+# Uncomment for production systems. Requires manual enable after first start:
+#   ALTER DATABASE ARCHIVELOG;
+# log_archive_dest_1='LOCATION=/opt/oracle/oradata/archive'

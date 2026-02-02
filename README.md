@@ -8,13 +8,13 @@ All-in-one Docker image for **Oracle Database Free + APEX + ORDS**. Zero config,
 # Build
 docker build -t oracle-apex-ords .
 
-# Run (ephemeral - data lost on container removal)
+# Run (ephemeral)
 docker run -d --name orcl \
   -p 1521:1521 -p 8080:8080 \
   -e ORACLE_PWD=YourPassword123 \
   oracle-apex-ords
 
-# Run (persistent - data survives restarts)
+# Run (persistent)
 docker run -d --name orcl \
   -p 1521:1521 -p 8080:8080 \
   -e ORACLE_PWD=YourPassword123 \
@@ -30,28 +30,75 @@ First startup takes **10-15 minutes** (APEX installation). Subsequent starts are
 |---------|-----|-------------|
 | APEX | http://localhost:8080/ords/apex | Create workspace |
 | APEX Admin | http://localhost:8080/ords/apex_admin | `ADMIN` / your password |
-| SQL Developer Web | http://localhost:8080/ords/admin/_sdw/ | See [Enable SDW](#enable-sql-developer-web) |
+| SQL Developer Web | http://localhost:8080/ords/\<schema\>/_sdw/ | [Enable first](#enable-sql-developer-web) |
 | Database | `localhost:1521/FREEPDB1` | `SYS` / your password |
 
-## Credentials
+## Environment Variables
 
-All accounts use the password you set via `ORACLE_PWD`:
+### Required
+| Variable | Description |
+|----------|-------------|
+| `ORACLE_PWD` | Password for SYS, SYSTEM, and APEX ADMIN |
 
-| Account | Username | Purpose |
-|---------|----------|---------|
-| SYS | `sys` | DBA (connect as SYSDBA) |
-| SYSTEM | `system` | DBA |
-| APEX Admin | `ADMIN` | APEX instance administration |
+### Optional
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ORACLE_PDB` | `FREEPDB1` | PDB name (`ORCLPDB1` for EE) |
+| `ORACLE_SID` | `FREE` | Database SID (`ORCLCDB` for EE) |
+| `SKIP_APEX` | `false` | Set `true` to skip APEX installation |
+| `SKIP_ORDS` | `false` | Set `true` for DB-only mode |
+| `ORDS_PORT` | `8080` | ORDS HTTP port |
+| `JDBC_INITIAL` | `10` | ORDS connection pool initial size |
+| `JDBC_MIN` | `10` | ORDS connection pool minimum |
+| `JDBC_MAX` | `50` | ORDS connection pool maximum |
+
+## Customization
+
+### Custom Database Parameters (PFILE)
+
+Edit `config/init.ora` before building, or mount your own at runtime:
+
+```bash
+docker run -d --name orcl \
+  -p 1521:1521 -p 8080:8080 \
+  -e ORACLE_PWD=YourPassword123 \
+  -v ./my-init.ora:/opt/oracle/config/init.ora:ro \
+  oracle-apex-ords
+```
+
+The default `init.ora` includes common tuning parameters with comments:
+- Memory (SGA/PGA)
+- Processes & sessions
+- Cursors
+- Result cache
+
+### Custom SQL Scripts
+
+Mount SQL files to `/opt/oracle/scripts/custom/` - they run after APEX install:
+
+```bash
+docker run -d --name orcl \
+  -v ./my-scripts:/opt/oracle/scripts/custom:ro \
+  ...
+```
+
+### DB-Only Mode (No APEX/ORDS)
+
+```bash
+docker run -d --name orcl \
+  -p 1521:1521 \
+  -e ORACLE_PWD=YourPassword123 \
+  -e SKIP_ORDS=true \
+  oracle-apex-ords
+```
 
 ## Enable SQL Developer Web
 
-SQL Developer Web requires REST-enabling a schema:
+REST-enable a schema first:
 
 ```sql
--- Connect as SYS
 sqlplus sys/YourPassword123@localhost:1521/FREEPDB1 as sysdba
 
--- Enable for ADMIN schema
 BEGIN
     ORDS_ADMIN.ENABLE_SCHEMA(
         p_enabled => TRUE,
@@ -65,102 +112,75 @@ END;
 /
 ```
 
-Then access: `http://localhost:8080/ords/admin/_sdw/`
+Access: `http://localhost:8080/ords/admin/_sdw/`
 
-## Data Pump (Import/Export)
+## Data Pump
 
-A Data Pump directory is pre-configured at `/opt/oracle/admin/datapump`:
+Pre-configured directory at `/opt/oracle/admin/datapump`:
 
 ```bash
-# Copy dump file into container
-docker cp myexport.dmp orcl:/opt/oracle/admin/datapump/
-
 # Import
-docker exec orcl impdp system/YourPassword123@FREEPDB1 \
-  directory=datapump_dir \
-  dumpfile=myexport.dmp \
-  logfile=import.log
+docker cp myexport.dmp orcl:/opt/oracle/admin/datapump/
+docker exec orcl impdp system/YourPwd@FREEPDB1 \
+  directory=datapump_dir dumpfile=myexport.dmp logfile=import.log
 
 # Export
-docker exec orcl expdp system/YourPassword123@FREEPDB1 \
-  directory=datapump_dir \
-  dumpfile=myexport.dmp \
-  schemas=MYSCHEMA
+docker exec orcl expdp system/YourPwd@FREEPDB1 \
+  directory=datapump_dir dumpfile=export.dmp schemas=MYSCHEMA
 ```
-
-## Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `ORACLE_PWD` | *required* | Password for SYS, SYSTEM, APEX ADMIN |
-| `ORACLE_PDB` | `FREEPDB1` | PDB name |
-| `ORACLE_SID` | `FREE` | Database SID |
 
 ## Enterprise Edition
 
-For production features (partitioning, advanced compression, etc.), use Oracle Enterprise Edition:
-
 ```bash
-# Requires Oracle account and license acceptance at container-registry.oracle.com
 docker build \
   --build-arg BASE_IMAGE=container-registry.oracle.com/database/enterprise:latest \
   -t oracle-apex-ords-ee .
 
 docker run -d --name orcl \
-  -p 1521:1521 -p 8080:8080 \
   -e ORACLE_PWD=YourPassword123 \
   -e ORACLE_SID=ORCLCDB \
   -e ORACLE_PDB=ORCLPDB1 \
   oracle-apex-ords-ee
 ```
 
-## Persistence
+## Project Structure
 
-| Path | Purpose | Mount? |
-|------|---------|--------|
-| `/opt/oracle/oradata` | Database files | **Required for persistence** |
-| `/opt/oracle/admin/datapump` | Data Pump files | Optional |
-| `/etc/ords/config` | ORDS configuration | Optional |
-| `/var/log/ords` | ORDS logs | Optional |
-
-Without mounting `/opt/oracle/oradata`, all data is lost when the container is removed (useful for CI/CD).
-
-## Ports
-
-| Port | Service |
-|------|---------|
-| 1521 | Oracle Net Listener (SQL*Plus, JDBC) |
-| 8080 | ORDS / APEX HTTP |
-| 5500 | EM Express (if enabled) |
+```
+├── Dockerfile              # Image build definition
+├── config/
+│   └── init.ora            # Database parameters (editable)
+├── scripts/
+│   ├── entrypoint.sh       # Main startup orchestrator
+│   ├── 01_apply_pfile.sh   # Apply PFILE to SPFILE
+│   ├── 02_setup_directories.sh
+│   ├── 03_install_apex.sh
+│   ├── 04_install_ords.sh
+│   └── 05_run_custom.sh    # Run custom SQL scripts
+└── README.md
+```
 
 ## Troubleshooting
 
-**Container logs:**
 ```bash
+# Container logs
 docker logs -f orcl
-```
 
-**ORDS logs:**
-```bash
+# ORDS logs
 docker exec orcl tail -f /var/log/ords/ords-standalone.log
-```
 
-**Database alert log:**
-```bash
+# Database alert log
 docker exec orcl tail -f /opt/oracle/diag/rdbms/free/FREE/trace/alert_FREE.log
-```
 
-**Shell access:**
-```bash
+# Shell access
 docker exec -it orcl bash
 ```
 
 ## Known Issues
 
-- **Do NOT use `*-lite` images** (e.g., `free:latest-lite`) - they exclude XDB which APEX requires
+- **Do NOT use `-lite` images** - they exclude XDB which APEX requires
 - First startup is slow (~10-15 min) due to APEX installation
-- The `mkdir: cannot create directory '/opt/oracle/admin/FREE': Permission denied` warning is harmless
+- `mkdir: cannot create directory` warnings during startup are harmless
 
 ## License
 
-The Dockerfile and scripts in this repository are provided as-is. Oracle Database, APEX, and ORDS are subject to [Oracle's licensing terms](https://www.oracle.com/downloads/licenses/standard-license.html).
+Dockerfile and scripts are provided as-is. Oracle software is subject to [Oracle licensing](https://www.oracle.com/downloads/licenses/standard-license.html).
