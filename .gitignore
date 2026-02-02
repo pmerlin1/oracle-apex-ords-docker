@@ -1,0 +1,18 @@
+# Data files (never commit)
+*.dmp
+*.log
+oradata/
+
+# Credentials
+.env
+*.pem
+*.key
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
