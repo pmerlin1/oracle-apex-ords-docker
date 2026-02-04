@@ -33,11 +33,15 @@ ARG ORDS_URL
 USER root
 
 # Fix Oracle yum repos (regional servers timeout)
-RUN echo "" > /etc/dnf/vars/ociregion && \
-    echo "" > /etc/yum/vars/ociregion
+RUN [ -d /etc/dnf/vars ] && echo "" > /etc/dnf/vars/ociregion || true && \
+    [ -d /etc/yum/vars ] && echo "" > /etc/yum/vars/ociregion || true
 
-# Install OS dependencies
-RUN dnf -y install unzip curl java-17-openjdk && dnf clean all
+# Install OS dependencies (dnf for OL8+, yum for OL7)
+RUN if command -v dnf &>/dev/null; then \
+        dnf -y install unzip curl java-17-openjdk && dnf clean all; \
+    else \
+        yum -y install unzip curl java-17-openjdk && yum clean all; \
+    fi
 
 # Download APEX
 RUN mkdir -p /opt/apex && \
